@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>קופת משמרת — כרטסת</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;800&family=Heebo:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#1c2b28;
+    --parchment:#f6f1e6;
+    --parchment-2:#eee6d3;
+    --amber:#c1893c;
+    --brick:#a85846;
+    --sage:#4f7a5b;
+    --line:#d9cfb8;
+    --muted:#6b7369;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{background:var(--ink);font-family:'Heebo',sans-serif;color:var(--ink);min-height:100vh;}
+  .wrap{max-width:720px;margin:0 auto;background:var(--parchment);min-height:100vh;box-shadow:0 0 60px rgba(0,0,0,.35);}
+  header{padding:24px 22px 16px;border-bottom:1px solid var(--line);}
+  .eyebrow{font-size:13px;color:var(--muted);margin:0 0 4px;}
+  h1{font-family:'Rubik',sans-serif;font-weight:800;font-size:24px;margin:0;}
+  .tabs{display:flex;gap:8px;margin-top:14px;}
+  .tab-btn{font-family:'Heebo',sans-serif;font-size:14px;padding:7px 16px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--muted);cursor:pointer;}
+  .tab-btn.active{background:var(--ink);color:var(--parchment);border-color:var(--ink);}
+  .year-toggle{display:flex;gap:6px;}
+
+  .balance-card{margin:18px 22px;padding:22px;background:var(--ink);border-radius:14px;color:var(--parchment);}
+  .balance-label{font-size:13px;color:#b9c2ba;margin:0 0 6px;}
+  .balance-number{font-family:'Rubik',sans-serif;font-weight:800;font-size:40px;margin:0;letter-spacing:-1px;}
+  .balance-sub{display:flex;gap:16px;margin-top:14px;font-size:13px;color:#c9d1c9;flex-wrap:wrap;}
+  .balance-sub b{color:var(--parchment);font-weight:600;}
+  .spark{margin-top:14px;}
+  .spark svg{width:100%;height:44px;display:block;}
+
+  .section-title{font-family:'Rubik',sans-serif;font-weight:600;font-size:15px;margin:24px 22px 8px;color:var(--ink);}
+
+  .feed{margin:0 22px 20px;}
+  .txn{display:flex;align-items:center;gap:12px;padding:12px 4px;border-bottom:1px solid var(--line);}
+  .txn-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+  .dot-credit{background:var(--sage);}
+  .dot-debit{background:var(--brick);}
+  .txn-main{flex:1;min-width:0;}
+  .txn-desc{font-size:14px;font-weight:500;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .txn-date{font-size:12px;color:var(--muted);margin-top:2px;}
+  .txn-amt{font-family:'Rubik',sans-serif;font-weight:600;font-size:14px;white-space:nowrap;}
+  .amt-credit{color:var(--sage);}
+  .amt-debit{color:var(--brick);}
+  .txn-bal{font-size:11px;color:var(--muted);text-align:left;min-width:64px;}
+
+  .members{margin:0 22px 24px;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fffdf8;}
+  .member-row{display:flex;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--line);font-size:14px;}
+  .member-row:last-child{border-bottom:none;}
+  .member-row b{font-family:'Rubik',sans-serif;font-weight:600;}
+  .member-row.total-row{background:var(--parchment-2);font-weight:700;}
+
+  footer{padding:16px 22px 30px;font-size:12px;color:var(--muted);display:flex;justify-content:space-between;align-items:center;}
+  .refresh-btn{font-family:'Heebo',sans-serif;font-size:12px;padding:6px 14px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--ink);cursor:pointer;}
+  .status{padding:14px 22px;font-size:13px;color:var(--brick);}
+  .loading{padding:60px 22px;text-align:center;color:var(--muted);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">קופה משותפת — כרטסת</p>
+    <h1>קופת משמרת</h1>
+    <div class="tabs" id="mainTabs"></div>
+  </header>
+  <div id="yearRow" style="padding:12px 22px 0;"><div class="year-toggle" id="yearToggle"></div></div>
+  <div id="content"><div class="loading">טוען נתונים מהגיליון…</div></div>
+  <footer>
+    <span id="lastUpdated"></span>
+    <button class="refresh-btn" onclick="loadAll()">רענון</button>
+  </footer>
+</div>
+
+<script>
+const SHEET_ID = "1g6pfVd-LjLUv7MYxcZ5FbjgvQ9SVODDcczXorG-Fwdg";
+const YEARS = ["2026", "2025"];
+let currentYear = "2026";
+let currentTab = "feed";
+let cache = null;
+
+function gvizUrl(sheetName){
+  return `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}`;
+}
+
+async function fetchSheet(sheetName){
+  const res = await fetch(gvizUrl(sheetName));
+  const text = await res.text();
+  const jsonStr = text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1);
+  const data = JSON.parse(jsonStr);
+  if (data.status === 'error'){
+    const msg = (data.errors && data.errors[0] && data.errors[0].detailed_message) || 'שגיאה מהגיליון';
+    throw new Error(sheetName + ': ' + msg);
+  }
+  return data.table.rows.map(r => (r.c || []).map(c => c ? (c.v !== undefined ? c.v : null) : null));
+}
+
+function num(v){
+  if (typeof v === 'object' && v !== null) return 0;
+  const n = parseFloat(v);
+  return isNaN(n) ? 0 : n;
+}
+function clean(v){ return (v === null || v === undefined) ? '' : String(v).trim(); }
+function parseGvizDate(v){
+  if (!v) return '';
+  const m = /Date\((\d+),\s*(\d+),\s*(\d+)\)/.exec(String(v));
+  if (!m) return String(v);
+  const y = +m[1], mo = +m[2] + 1, d = +m[3];
+  return String(d).padStart(2,'0') + '.' + String(mo).padStart(2,'0') + '.' + y;
+}
+
+function parseLedger(rows){
+  let headerIdx = -1;
+  for (let i=0;i<rows.length;i++){
+    if (clean(rows[i][4]).includes('פירוט תנועה')){ headerIdx = i; break; }
+  }
+  const txns = [];
+  for (let i=headerIdx+1;i<rows.length;i++){
+    const row = rows[i];
+    const desc = clean(row[4]);
+    if (!desc) continue;
+    if (desc.includes('סה"כ תנועות')) continue;
+    const debit = num(row[5]), credit = num(row[6]);
+    const hasBalance = row[7] !== null && row[7] !== undefined;
+    if (debit === 0 && credit === 0 && !hasBalance) continue; // placeholder / forecast rows with no data yet
+    txns.push({
+      id: clean(row[1]),
+      date: parseGvizDate(row[2]),
+      year: clean(row[3]),
+      desc: desc,
+      debit: debit,
+      credit: credit,
+      balance: num(row[7]),
+      details: clean(row[8])
+    });
+  }
+  return { txns };
+}
+
+function parseIncome(rows){
+  let headerIdx = -1;
+  for (let i=0;i<rows.length;i++){
+    if (clean(rows[i][1]).includes('שם החבר')){ headerIdx = i; break; }
+  }
+  const members = [];
+  let total2025=0, total2026=0;
+  for (let i=headerIdx+1;i<rows.length;i++){
+    const row = rows[i];
+    const name = clean(row[1]);
+    if (!name) continue;
+    if (name.includes('סה"כ')){
+      total2025 = num(row[2]); total2026 = num(row[3]);
+      continue;
+    }
+    members.push({ name, y2025: num(row[2]), y2026: num(row[3]), total: num(row[4]) });
+  }
+  return { members, total2025, total2026 };
+}
+
+async function loadAll(){
+  document.getElementById('content').innerHTML = '<div class="loading">טוען נתונים מהגיליון…</div>';
+  try {
+    const [ledgerRows, incomeRows] = await Promise.all([
+      fetchSheet('כרטסת'),
+      fetchSheet('הכנסות')
+    ]);
+    cache = { ledger: parseLedger(ledgerRows), income: parseIncome(incomeRows) };
+    buildTabs(); buildYearToggle(); render();
+    document.getElementById('lastUpdated').textContent =
+      'עודכן ' + new Date().toLocaleString('he-IL', { hour:'2-digit', minute:'2-digit', day:'2-digit', month:'2-digit' });
+  } catch (e){
+    document.getElementById('content').innerHTML =
+      '<div class="status">לא הצלחתי לטעון את הנתונים מהגיליון. ודא שהגיליון "פורסם לאינטרנט" (לא רק משותף).<br><span style="font-size:11px;opacity:.7;">פרטי שגיאה: ' + (e && e.message ? e.message : e) + '</span></div>';
+  }
+}
+
+function sparkline(values){
+  if (!values.length) return '';
+  const w = 300, h = 40, pad = 2;
+  const min = Math.min(...values), max = Math.max(...values);
+  const range = (max - min) || 1;
+  const pts = values.map((v,i) => {
+    const x = pad + (i/(values.length-1||1)) * (w-2*pad);
+    const y = h - pad - ((v-min)/range) * (h-2*pad);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><polyline points="${pts}" fill="none" stroke="#c1893c" stroke-width="2"/></svg>`;
+}
+
+function render(){
+  if (currentTab === 'feed') renderFeed(); else renderMembers();
+}
+
+function renderFeed(){
+  const { txns } = cache.ledger;
+  const yearTxns = txns.filter(t => t.year === currentYear);
+  const last = yearTxns[yearTxns.length-1];
+  const first = yearTxns[0];
+  const balance = last ? last.balance : 0;
+  const totalCredit = yearTxns.reduce((a,t)=>a+t.credit,0);
+  const totalDebit = yearTxns.reduce((a,t)=>a+t.debit,0);
+  const balances = yearTxns.map(t=>t.balance);
+
+  let html = `
+    <div class="balance-card">
+      <p class="balance-label">יתרת קופה — סוף ${currentYear}</p>
+      <p class="balance-number">${balance.toLocaleString('he-IL')} ₪</p>
+      <div class="balance-sub">
+        <span>הכנסות: <b>${totalCredit.toLocaleString('he-IL')} ₪</b></span>
+        <span>הוצאות: <b>${totalDebit.toLocaleString('he-IL')} ₪</b></span>
+        <span>${yearTxns.length} תנועות</span>
+      </div>
+      <div class="spark">${sparkline(balances)}</div>
+    </div>
+    <p class="section-title">כרטסת תנועות — ${currentYear}</p>
+    <div class="feed">`;
+
+  for (const t of yearTxns.slice().reverse()){
+    const isCredit = t.credit > 0;
+    const amt = isCredit ? t.credit : t.debit;
+    html += `
+      <div class="txn">
+        <div class="txn-dot ${isCredit?'dot-credit':'dot-debit'}"></div>
+        <div class="txn-main">
+          <div class="txn-desc">${t.desc}</div>
+          <div class="txn-date">${t.date}${t.details ? ' · ' + t.details : ''}</div>
+        </div>
+        <div style="text-align:left;">
+          <div class="txn-amt ${isCredit?'amt-credit':'amt-debit'}">${isCredit?'+':'-'}${amt.toLocaleString('he-IL')} ₪</div>
+          <div class="txn-bal">יתרה: ${t.balance.toLocaleString('he-IL')}</div>
+        </div>
+      </div>`;
+  }
+  html += `</div>`;
+  document.getElementById('content').innerHTML = html;
+}
+
+function renderMembers(){
+  const { income } = cache;
+  const col = currentYear === '2026' ? 'y2026' : 'y2025';
+  const total = currentYear === '2026' ? income.total2026 : income.total2025;
+  let html = `<p class="section-title">גביית דמי חבר — ${currentYear}</p><div class="members">`;
+  for (const m of income.members){
+    const val = m[col];
+    if (!val) continue;
+    html += `<div class="member-row"><span>${m.name}</span><b>${val.toLocaleString('he-IL')} ₪</b></div>`;
+  }
+  html += `<div class="member-row total-row"><span>סה"כ נגבה</span><b>${total.toLocaleString('he-IL')} ₪</b></div></div>`;
+  document.getElementById('content').innerHTML = html;
+}
+
+function buildTabs(){
+  const el = document.getElementById('mainTabs');
+  el.innerHTML = `
+    <button class="tab-btn ${currentTab==='feed'?'active':''}" onclick="switchTab('feed')">כרטסת תנועות</button>
+    <button class="tab-btn ${currentTab==='members'?'active':''}" onclick="switchTab('members')">גביית חברים</button>`;
+}
+function switchTab(t){ currentTab = t; buildTabs(); render(); }
+
+function buildYearToggle(){
+  const el = document.getElementById('yearToggle');
+  el.innerHTML = YEARS.map(y =>
+    `<button class="tab-btn ${y===currentYear?'active':''}" onclick="switchYear('${y}')">${y}</button>`
+  ).join('');
+}
+function switchYear(y){ currentYear = y; buildYearToggle(); render(); }
+
+loadAll();
+</script>
+</body>
+</html>
