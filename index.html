@@ -202,11 +202,27 @@ function renderFeed(){
   const { txns } = cache.ledger;
   const yearTxns = txns.filter(t => t.year === currentYear);
   const last = yearTxns[yearTxns.length-1];
-  const first = yearTxns[0];
   const balance = last ? last.balance : 0;
   const totalCredit = yearTxns.reduce((a,t)=>a+t.credit,0);
   const totalDebit = yearTxns.reduce((a,t)=>a+t.debit,0);
   const balances = yearTxns.map(t=>t.balance);
+
+  // Build the display list, adding a synthetic opening-balance row when the
+  // year doesn't already start with an explicit "יתרת פתיחה" entry, so the
+  // carry-over from the previous year is always visible.
+  let displayTxns = yearTxns.slice();
+  if (yearTxns.length && !yearTxns[0].desc.includes('יתרת פתיחה')){
+    const globalIdx = txns.indexOf(yearTxns[0]);
+    const prev = globalIdx > 0 ? txns[globalIdx-1] : null;
+    if (prev){
+      displayTxns = [{
+        desc: 'יתרת פתיחה משנה קודמת',
+        date: '01.01.' + currentYear,
+        debit: 0, credit: prev.balance, balance: prev.balance,
+        details: '', synthetic: true
+      }].concat(yearTxns);
+    }
+  }
 
   let html = `
     <div class="balance-card">
@@ -222,18 +238,18 @@ function renderFeed(){
     <p class="section-title">כרטסת תנועות — ${currentYear}</p>
     <div class="feed">`;
 
-  for (const t of yearTxns.slice().reverse()){
+  for (const t of displayTxns.slice().reverse()){
     const isCredit = t.credit > 0;
     const amt = isCredit ? t.credit : t.debit;
     html += `
       <div class="txn">
-        <div class="txn-dot ${isCredit?'dot-credit':'dot-debit'}"></div>
+        <div class="txn-dot ${t.synthetic ? '' : (isCredit?'dot-credit':'dot-debit')}" style="${t.synthetic?'background:var(--muted);':''}"></div>
         <div class="txn-main">
           <div class="txn-desc">${t.desc}</div>
           <div class="txn-date">${t.date}${t.details ? ' · ' + t.details : ''}</div>
         </div>
         <div style="text-align:left;">
-          <div class="txn-amt ${isCredit?'amt-credit':'amt-debit'}">${isCredit?'+':'-'}${amt.toLocaleString('he-IL')} ₪</div>
+          <div class="txn-amt ${t.synthetic ? '' : (isCredit?'amt-credit':'amt-debit')}" style="${t.synthetic?'color:var(--muted);':''}">${t.synthetic ? '' : (isCredit?'+':'-')}${amt.toLocaleString('he-IL')} ₪</div>
           <div class="txn-bal">יתרה: ${t.balance.toLocaleString('he-IL')}</div>
         </div>
       </div>`;
